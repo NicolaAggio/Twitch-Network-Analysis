@@ -8,6 +8,7 @@ Nel caso specifico di questo progetto, la ricerca è stata effettuata su una ret
 Il software che si è deciso di utilizzare per condurre l’analisi della rete è stato R, per la sua grande versatilità nell’analisi dei dati e, in particolare, per la presenza della libreria “igraph”, che permette analizzare e visualizzare grafi in maniera dinamica e non troppo complessa.
 
 L'analisi prevede i seguenti step:
+
 ● visualizzazione della rete ed estrazione di informazioni utili;
 
 ● calcolo della centralità della rete attraverso diverse metriche;
@@ -15,3 +16,5 @@ L'analisi prevede i seguenti step:
 ● identificazione ed analisi di clusters ottenuti attraverso diversi algoritmi di community detection;
 
 ● misurazione di un eventuale fenomeno omofilia all’interno della rete rispetto agli attributi dei nodi.
+
+Il repository contiene la presentazione il report del progetto, i dati utilizzati ed il codice R prodotto. Infine, è stata inclusa anche la presentazione Power Point per l'esame orale.
