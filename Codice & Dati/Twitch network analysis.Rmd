@@ -1,0 +1,625 @@
+---
+title: "Twitch Network Analysis"
+author: "Nicola Aggio"
+output: 
+  html_document:
+    toc: yes
+---
+
+In questo documento R Markdown viene illustrato il codice utilizzato per condurre l'analisi mostrata nel report.
+Prima di tutto impostiamo il seme ad un valore fisso, in modo tale che il codice possa essere eseguito in maniera consistente di volta in volta.
+
+```{r}
+rm(list = ls())
+set.seed(3)
+```
+
+In seguito, carichiamo i pacchetti necessari all'esecuzione di tutti i metodi utilizzati nell'analisi.
+
+```{r}
+library(igraph)
+library(fossil)
+library(brainGraph)
+```
+
+Carichiamo i nodi e gli archi dai file csv e li salviamo in due liste distinte. Dopodichè, visualizziamo le prime righe di ciascuna lista.
+
+```{r}
+nodes <- read.csv("musae_PTBR_target.csv")
+links <- read.csv("musae_PTBR_edges.csv")
+```
+
+```{r}
+head(nodes)
+head(links)
+```
+
+A questo punto, attraverso la lista dei link, costruiamo la rete e la semplifichiamo, rimuovendo gli archi duplicati ed i self-loops.
+
+```{r}
+net <- graph_from_data_frame(d = links, directed = FALSE)
+net <- simplify(net, remove.multiple = TRUE, remove.loops = TRUE) 
+```
+
+# Visualizzazione ed info utili
+
+In questa sezione ci soffermiamo sulla visualizzazione della rete e delle informazioni principali.
+Prima di tutto, coloriamo i nodi a seconda del numero di visualizzazioni al canale dello streamer.
+NOTA: il codice utilizzato per creare la lista dei colori da assegnare a ciascun nodo è preso direttamente dalla lezione "Application - Citation Network" del corso di Social Network Analysis 2021-20221. Lo stesso codice sarà utilizzato anche nei chunk successivi.
+
+```{r}
+bins <- unique(quantile(nodes$views, seq(0,1,length.out=30)))
+vals <- cut(nodes$views, bins, labels=FALSE, include.lowest=TRUE)
+my_col = hcl.colors(length(bins))
+colorVals <- rev(my_col)[vals]
+V(net)$color <- colorVals
+```
+
+Visualizziamo la rete.
+\n NOTA: è stato deciso di produrre un pdf contenente il grafo in output in modo tale da visualizzare lo stesso risultato contenuto nel report. Questa decisione è stata applicata anche per tutti i grafi e le figure successive. Per evitare di produrre il file pdf, è necessario cancellare i comandi pdf(..) e dev.off(), facendo attenzione a modificare i parametri relativi alla dimensione dei vertici, legenda etc..
+
+```{r}
+lout <- layout.fruchterman.reingold(net)
+
+pdf("Twitch Users Network.pdf",12,12)
+  plot.igraph(net, 
+              layout = lout, 
+              vertex.label = NA, 
+              vertex.size = 2, 
+              edge.width = 0.1, 
+              edge.color = "gray78",
+              frame = TRUE
+              )
+  title(main = "Twitch Users Network - Amicizie tra streamer portoghesi",
+        cex.main = 2)
+  legend("topleft", 
+         legend = c("0 <= k < 580", "580 <= k < 2.341", "2.341 <= k < 7.390", "7.390 <= k < 24.730","24.730 <= k <= 116.392.808"),
+         cex = 1.3,
+         col = rev(my_col)[c(3,9,16,22,27)],
+         pch = 19,
+         title = "Numero di visualizzazioni [k]",
+         box.lty = 0
+        )
+dev.off()
+```
+
+Visualizziamo ora le informazioni utili: densità, average clustering coefficient e degree distribution.
+
+```{r}
+# densità
+edge_density(net)
+
+# average clustering coefficient
+transitivity(net, type = "global")
+
+# degree distribution
+pdf("Degree distribution.pdf",7,7)
+  plot.default(degree_distribution(net),
+               type = "p",
+               pch = 16,
+               xlab = "Grado [k]",
+               ylab = "Probabilità [P(k)]",
+               cex.xlab = 2,
+               cex.ylab = 2,
+               frame.plot = TRUE) 
+  title(main = "Degree Distribution",
+        cex.main = 1.5)
+dev.off()
+```
+
+
+# Misure di centralità
+
+In questa sezione utilizzeremo diverse misure di centralità per individuare i nodi centrali e più importanti. Per ogni misura, viene assegnato a ciascun nodo un punteggio di centralità, attraverso il quale si colorano i nodi per una visualizzazione più intuitiva della rete. Infine, per ogni misura si salva il nodo con punteggio massimo, per effettuare un confronto finale.
+
+- Degree Centrality: score in base al grado del nodo
+
+```{r}
+degCent <- centr_degree(net)$res
+bins <- unique(quantile(degCent, seq(0,1,length.out=30)))
+vals <- cut(degCent, bins, labels=FALSE, include.lowest=TRUE)
+my_col = heat.colors(length(bins))
+colorVals <- rev(my_col)[vals]
+V(net)$color <- colorVals
+```
+
+```{r}
+pdf("Degree centrality.pdf",12,12)
+  plot.igraph(net, 
+              layout = lout, 
+              vertex.label = NA, 
+              vertex.size = 2, 
+              edge.width = 0.1, 
+              edge.color = "gray78",
+              frame = TRUE)
+  title(main = "Degree centrality",
+        cex.main = 2)
+  legend("topleft", 
+         legend = c("Bassa", "Media", "Alta"),
+         cex = 1.5,
+         col = rev(my_col)[c(10,20,29)],
+         pch = 19,
+         title = "Grado di centralità",
+         box.lty = 0
+        )
+dev.off()
+```
+
+Salviamo il nodo con grado massimo:
+
+```{r}
+centralnode_degree <-nodes[which.max(degCent),]
+```
+
+
+- Eigenvector Centrality: classificazione basata sull’influenza del nodo all’interno della rete
+
+```{r}
+eigCent <- evcent(net)$vector
+bins <- unique(quantile(eigCent, seq(0,1,length.out=30)))
+vals <- cut(eigCent, bins, labels=FALSE, include.lowest=TRUE)
+my_col = heat.colors(length(bins))
+colorVals <- rev(my_col)[vals]
+V(net)$color <- colorVals
+```
+
+```{r}
+pdf("Eigenvector centrality.pdf",12,12)
+  plot.igraph(net, 
+              layout = lout, 
+              vertex.label = NA, 
+              vertex.size = 2, 
+              edge.width = 0.1, 
+              edge.color = "gray78",
+              frame = TRUE)
+  title(main = "Eigenvector centrality",
+        cex.main = 2)
+  legend("topleft", 
+         legend = c("Bassa", "Media", "Alta"),
+         cex = 1.5,
+         col = rev(my_col)[c(10,20,29)],
+         pch = 19,
+         title = "Grado di centralità",
+         box.lty = 0
+        )
+dev.off()
+```
+
+```{r}
+centralnode_eigen <- nodes[which.max(eigCent),]
+```
+
+
+- Betweenness Centrality = punteggio del vertice è dato dalla betweenness, ossia dal numero di cammini minimi da cui il nodo è attraversato
+
+```{r}
+betCent <- betweenness(net, directed = FALSE)
+bins <- unique(quantile(betCent, seq(0,1,length.out=30)))
+vals <- cut(betCent, bins, labels=FALSE, include.lowest=TRUE)
+my_col = heat.colors(length(bins))
+colorVals <- rev(my_col)[vals]
+V(net)$color <- colorVals
+```
+
+```{r}
+pdf("Betweenness centrality.pdf",12,12)
+  plot.igraph(net, 
+              layout = lout, 
+              vertex.label = NA, 
+              vertex.size = 2, 
+              edge.width = 0.1, 
+              edge.color = "gray78",
+              frame = TRUE)
+  title(main = "Betweenness centrality",
+        cex.main = 2)
+  legend("topleft", 
+         legend = c("Bassa", "Media", "Alta"),
+         cex = 1.5,
+         col = rev(my_col)[c(10,20,28)],
+         pch = 19,
+         title = "Grado di centralità",
+         box.lty = 0
+        )
+dev.off()
+```
+
+```{r}
+centralnode_bet <-nodes[which.max(betCent),]
+```
+
+
+- Closeness centrality = punteggio dato dalla media delle lunghezze dei persorsi più brevi tra il nodo e tutti gli altri
+
+```{r}
+closeCent <- closeness(net)
+bins <- unique(quantile(closeCent, seq(0,1,length.out=30)))
+vals <- cut(closeCent, bins, labels=FALSE, include.lowest=TRUE)
+my_col = heat.colors(length(bins))
+colorVals <- rev(my_col)[vals]
+V(net)$color <- colorVals
+```
+
+```{r}
+pdf("Closeness centrality.pdf",12,12)
+  plot.igraph(net, 
+              layout = lout, 
+              vertex.label = NA, 
+              vertex.size = 2, 
+              edge.width = 0.1, 
+              edge.color = "gray78",
+              frame = TRUE)
+  title(main = "Closeness centrality",
+        cex.main = 2)
+  legend("topleft", 
+         legend = c("Bassa", "Media", "Alta"),
+         cex = 1.5,
+         col = rev(my_col)[c(10,20,29)],
+         pch = 19,
+         title = "Grado di centralità",
+         box.lty = 0
+        )
+dev.off()
+```
+
+```{r}
+centralnode_close <-nodes[which.max(closeCent),]
+```
+
+
+Confrontiamo le metriche utilizzate misurando le correlazioni:
+
+```{r}
+cor(degCent, eigCent)
+cor(degCent, betCent)
+cor(degCent, closeCent)
+
+cor(eigCent, betCent)
+cor(eigCent, closeCent)
+
+cor(betCent, closeCent)
+```
+
+Confrontiamo i nodi centrali delle quattro misurazioni:
+
+```{r}
+centralnode_degree
+centralnode_eigen
+centralnode_bet
+centralnode_close
+```
+
+
+# Community Detection
+
+Questa sezione è invece dedicata all'applicazione di tre diversi algoritmi di community detection per visualizzare i cluster della rete. Anche in questo caso, per ogni algoritmo visualizziamo i risultati direttamente nella rete, considerando solamente i cinque cluster più popolosi individuati. Infine, confrontiamo i metodi utilizzati. 
+
+- Louvain community detection algorithm: algoritmo basato sulla massimizzazione della modularità, un indice che misura la densità relativa degli archi all’interno della comunità rispetto a quella degli archi esterni alla comunità.
+
+```{r}
+louvain <- cluster_louvain(net)
+sort(table(louvain$membership))
+```
+
+```{r}
+V(net)$color <- rep("white", length(louvain$membership))
+keepTheseCommunities <- names(sizes(louvain))[sizes(louvain) > 170]
+matchIndex <- match(louvain$membership, keepTheseCommunities) 
+colorVals <- rainbow(5)[matchIndex[!is.na(matchIndex)]]
+V(net)$color[!is.na(matchIndex)] <- colorVals
+```
+
+Cambiamo il layout per visualizzare meglio i cluster.
+
+```{r}
+lout_louvain <- lout
+
+pos1cluster <- which(louvain$membership == 1, arr.ind = TRUE)
+pos2cluster <- which(louvain$membership == 2, arr.ind = TRUE)
+pos3cluster <- which(louvain$membership == 3, arr.ind = TRUE)
+pos4cluster <- which(louvain$membership == 4, arr.ind = TRUE)
+pos7cluster <- which(louvain$membership == 7, arr.ind = TRUE)
+
+lout_louvain[pos1cluster,]  <- lout_louvain[pos1cluster,] + 1.8
+lout_louvain[pos2cluster,]  <- lout_louvain[pos2cluster,] - 2
+lout_louvain[pos3cluster,]  <- lout_louvain[pos3cluster,] + 0.7
+lout_louvain[pos4cluster,]  <- lout_louvain[pos4cluster,] - 1.8
+lout_louvain[pos7cluster,]  <- lout_louvain[pos7cluster,] + 1.5
+```
+
+
+```{r}
+pdf("Community Detection - Louvain.pdf",12,12)
+  plot.igraph(net, 
+              layout = lout_louvain, 
+              vertex.label = NA, 
+              vertex.size = 2, 
+              edge.width = 0.1, 
+              edge.color = "gray78",
+              frame = TRUE)
+  title(main = "Community detection - Louvain algorithm",
+        cex.main = 2)
+  legend("topleft", 
+         legend = c("Cluster 1", "Cluster 2", "Cluster 3", "Cluster 4", "Cluster 5"),
+         cex = 1.5,
+         col = c("#CC00FF", "#FF0000", "#00FF66", "#CCFF00", "#0066FF"),
+         pch = 19,
+         title = "Clusters",
+         box.lty = 0
+        )
+dev.off()
+```
+
+- Fast greedy algorithm: anche questo algoritmo si basa sulla modularità, utilizzando un approccio greedy.
+
+```{r}
+greedy <- cluster_fast_greedy(net)
+sort(table(greedy$membership))
+```
+
+```{r}
+V(net)$color <- rep("white", length(greedy$membership))
+keepTheseCommunities <- names(sizes(greedy))[sizes(greedy) > 20]
+matchIndex <- match(greedy$membership, keepTheseCommunities) 
+colorVals <- rainbow(5)[matchIndex[!is.na(matchIndex)]]
+V(net)$color[!is.na(matchIndex)] <- colorVals
+```
+
+```{r}
+lout_greedy <- lout
+
+pos1cluster <- which(greedy$membership == 1, arr.ind = TRUE)
+pos2cluster <- which(greedy$membership == 2, arr.ind = TRUE)
+pos3cluster <- which(greedy$membership == 3, arr.ind = TRUE)
+pos4cluster <- which(greedy$membership == 4, arr.ind = TRUE)
+pos6cluster <- which(greedy$membership == 6, arr.ind = TRUE)
+
+lout_greedy[pos1cluster,]  <- lout_greedy[pos1cluster,] + 1
+lout_greedy[pos2cluster,]  <- lout_greedy[pos2cluster,] - 0
+lout_greedy[pos3cluster,]  <- lout_greedy[pos3cluster,] - 0.5
+lout_greedy[pos4cluster,]  <- lout_greedy[pos4cluster,] - 1.3
+lout_greedy[pos6cluster,]  <- lout_greedy[pos6cluster,] + 1
+```
+
+```{r}
+pdf("Community Detection - FastGreedy.pdf",12,12)
+  plot.igraph(net, 
+              layout = lout_greedy, 
+              vertex.label = NA, 
+              vertex.size = 2, 
+              edge.width = 0.1, 
+              edge.color = "gray78",
+              frame = TRUE)
+  title(main = "Community detection - Fast greedy algorithm",
+        cex.main = 2)
+  legend("topleft", 
+         legend = c("Cluster 1", "Cluster 2", "Cluster 3", "Cluster 4", "Cluster 5"),
+         cex = 1.5,
+         col = c("#CC00FF", "#FF0000", "#00FF66", "#CCFF00", "#0066FF"),
+         pch = 19,
+         title = "Clusters",
+         box.lty = 0
+        )
+dev.off()
+```
+
+- Walktrap algorithm: questo algoritmo identifica le comunità attraverso i “random walks” ed un approccio bottom-up.
+
+```{r}
+walktrap <- cluster_walktrap(net)
+sort(table(walktrap$membership))
+```
+
+```{r}
+V(net)$color <- rep("white", length(walktrap$membership))
+keepTheseCommunities <- names(sizes(walktrap))[sizes(walktrap) > 40]
+matchIndex <- match(walktrap$membership, keepTheseCommunities) 
+colorVals <- rainbow(5)[matchIndex[!is.na(matchIndex)]]
+V(net)$color[!is.na(matchIndex)] <- colorVals
+```
+
+```{r}
+lout_walk <- lout
+
+pos1cluster <- which(walktrap$membership == 1, arr.ind = TRUE)
+pos3cluster <- which(walktrap$membership == 3, arr.ind = TRUE)
+pos5cluster <- which(walktrap$membership == 5, arr.ind = TRUE)
+pos6cluster <- which(walktrap$membership == 6, arr.ind = TRUE)
+pos7cluster <- which(walktrap$membership == 7, arr.ind = TRUE)
+
+lout_walk[pos1cluster,]  <- lout_walk[pos1cluster,] + 2
+lout_walk[pos3cluster,]  <- lout_walk[pos3cluster,] - 0
+lout_walk[pos5cluster,]  <- lout_walk[pos5cluster,] - 0.5
+lout_walk[pos6cluster,]  <- lout_walk[pos6cluster,] - 1
+lout_walk[pos7cluster,]  <- lout_walk[pos7cluster,] + 0.7
+```
+
+```{r}
+pdf("Community Detection - Walktrap.pdf",12,12)
+  plot.igraph(net, 
+              layout = lout_walk, 
+              vertex.label = NA, 
+              vertex.size = 2, 
+              edge.width = 0.1, 
+              edge.color = "gray78",
+              frame = TRUE)
+  title(main = "Community detection - Walktrap algorithm",
+        cex.main = 2)
+  legend("topleft", 
+         legend = c("Cluster 1", "Cluster 2", "Cluster 3", "Cluster 4", "Cluster 5"),
+         cex = 1.5,
+         col = c("#CC00FF", "#FF0000", "#00FF66", "#CCFF00", "#0066FF"),
+         pch = 19,
+         title = "Clusters",
+         box.lty = 0
+        )
+dev.off()
+```
+
+Procediamo ora con un confronto dei cluster attraverso l'indice Rand.
+
+```{r}
+compare(louvain$membership, greedy$membership, method = "rand")
+compare(louvain$membership, walktrap$membership, method = "rand")
+compare(greedy$membership, walktrap$membership, method = "rand")
+```
+
+Effettuiamo un'analisi dei cluster dell'algoritmo Louvain.
+
+```{r}
+pos1cluster <- which(louvain$membership == 1, arr.ind = TRUE)
+pos2cluster <- which(louvain$membership == 2, arr.ind = TRUE)
+pos3cluster <- which(louvain$membership == 3, arr.ind = TRUE)
+pos4cluster <- which(louvain$membership == 4, arr.ind = TRUE)
+pos7cluster <- which(louvain$membership == 7, arr.ind = TRUE)
+```
+
+Confrontiamo i cluster in base all'attributo "views":
+
+```{r}
+pdf("Confronto cluster - views.pdf",7,7)
+  boxplot(nodes[pos1cluster,]$views, 
+     nodes[pos2cluster,]$views, 
+     nodes[pos7cluster,]$views, 
+     nodes[pos3cluster,]$views,
+     nodes[pos4cluster,]$views,
+     ylab = "Visualizzazioni",
+     cex.ylab = 2,
+     names = c("Cluster 1", "Cluster 2", "Cluster 7", "Cluster 3", "Cluster 4"),
+     col = c("#CC00FF", "#FF0000", "#00FF66", "#CCFF00", "#0066FF"),
+     border = c("#CC00FF", "#FF0000", "#00FF66", "#CCFF00", "#0066FF"),
+     outline = FALSE)
+  title(main = "Confronto tra clusters - Visualizzazioni",
+        cex.main = 1.5)
+dev.off()
+```
+
+Confrontiamo i cluster in base all'attributo "days":
+
+```{r}
+pdf("Confronto cluster - days.pdf",7,7)
+  boxplot(nodes[pos1cluster,]$days, 
+     nodes[pos2cluster,]$days, 
+     nodes[pos7cluster,]$days, 
+     nodes[pos3cluster,]$days,
+     nodes[pos4cluster,]$days,
+     ylab = "Giorni di attività",
+     names = c("Cluster 1", "Cluster 2", "Cluster 7", "Cluster 3", "Cluster 4"),
+     col = c("#CC00FF", "#FF0000", "#00FF66", "#CCFF00", "#0066FF"),
+     border = c("#CC00FF", "#FF0000", "#00FF66", "#CCFF00", "#0066FF"),
+     outline = FALSE)
+  title(main = "Confronto tra clusters - Giorni di attività",
+        cex.main = 1.5)
+dev.off()
+```
+
+Confrontiamo i cluster in base agli attributi "partner" ed "age" in maniera combinata:
+
+```{r}
+bar <- as.matrix(data.frame(A = c(sum(nodes[pos1cluster,]$mature=="True"), sum(nodes[pos1cluster,]$partner=="True")),         
+                             B = c(sum(nodes[pos2cluster,]$mature=="True"), sum(nodes[pos2cluster,]$partner=="True")),
+                             C = c(sum(nodes[pos7cluster,]$mature=="True"), sum(nodes[pos7cluster,]$partner=="True")),
+                             D = c(sum(nodes[pos3cluster,]$mature=="True"), sum(nodes[pos3cluster,]$partner=="True")),
+                             E = c(sum(nodes[pos4cluster,]$mature=="True"), sum(nodes[pos4cluster,]$partner=="True"))))
+
+rownames(bar) <- c("Maggiorenni", "Partner")
+bar
+```
+
+```{r}
+pdf("Confronto cluster - combined.pdf",7,7)
+  barplot(bar,                                         
+        col = c("dodgerblue", "dodgerblue4"),
+        beside = TRUE,
+        names.arg = c("Cluster 1", "Cluster 2", "Cluster 7", "Cluster 3", "Cluster 4"),
+        )
+  legend("topleft",                                    
+       legend = c("Utenti maggiorenni", "Utenti partner"),
+       fill = c("dodgerblue", "dodgerblue4"))
+  title(main = "Confronto tra clusters - Utenti maggiorenni e partner",
+        cex.main = 1.5)
+dev.off()
+```
+
+
+# Misurazione dell'omofilia
+
+In questa sezione ci concentriamo sulla misurazione di un eventuale fenomeno di omofilia rispetto ad alcuni attributi dei nodi.
+
+```{r}
+# omofilia rispetto a "views"
+assortativity(net, types1 = nodes$views, directed = FALSE)
+
+# omofilia rispetto a "partner"
+assortativity_nominal(net, types = ifelse(nodes$partner == "True", 2,1), directed = FALSE)
+
+# omofilia rispetto a "mature"
+assortativity_nominal(net, types = ifelse(nodes$mature == "True", 2,1), directed = FALSE)
+
+# omofilia rispetto a "days"
+assortativity(net, types1 = nodes$days, directed = FALSE)
+```
+
+Vediamo come si relazionano gli utenti più famosi nella rete: stanno negli stessi cluster?
+
+```{r}
+top5_pos_views <- order(nodes$views, decreasing = TRUE)[1:5]
+top5_id_views <- nodes$id[top5_pos_views]
+top5_pos_days <- order(nodes$days, decreasing = TRUE)[1:5]
+top5_id_days <- nodes$id[top5_pos_days]
+```
+
+```{r}
+V(net)$color <- rep("white", length(louvain$membership))
+keepTheseCommunities <- names(sizes(louvain))[sizes(louvain) > 170]
+matchIndex <- match(louvain$membership, keepTheseCommunities) # like %in%
+colorVals <- rainbow(5)[matchIndex[!is.na(matchIndex)]]
+V(net)$color[!is.na(matchIndex)] <- colorVals
+```
+
+Cambio il layout per visualizzare meglio i cluster
+
+```{r}
+lout_louvain <- lout
+
+pos1cluster <- which(louvain$membership == 1, arr.ind = TRUE)
+pos2cluster <- which(louvain$membership == 2, arr.ind = TRUE)
+pos3cluster <- which(louvain$membership == 3, arr.ind = TRUE)
+pos4cluster <- which(louvain$membership == 4, arr.ind = TRUE)
+pos7cluster <- which(louvain$membership == 7, arr.ind = TRUE)
+
+lout_louvain[pos1cluster,]  <- lout_louvain[pos1cluster,] + 1.8
+lout_louvain[pos2cluster,]  <- lout_louvain[pos2cluster,] - 2
+lout_louvain[pos3cluster,]  <- lout_louvain[pos3cluster,] + 0.7
+lout_louvain[pos4cluster,]  <- lout_louvain[pos4cluster,] - 1.8
+lout_louvain[pos7cluster,]  <- lout_louvain[pos7cluster,] + 1.5
+```
+
+```{r}
+pdf("Top5 - views.pdf",12,12)
+  plot.igraph(net, 
+              layout = lout_louvain, 
+              vertex.label = NA, 
+              vertex.size = ifelse(is.element((nodes$id),top5_id_views),10,2), 
+              vertex.shape = ifelse(is.element((nodes$id), top5_id_views), "square","circle"),
+              edge.width = 0.1, 
+              edge.color = "gray78", 
+              frame = TRUE)
+  title(main = "Top 5 streamer per visualizzazioni",
+        cex.main = 2)
+dev.off()
+```
+
+```{r}
+pdf("Top5 - days.pdf",12,12)
+  plot.igraph(net, 
+              layout = lout_louvain, 
+              vertex.label = NA, 
+              vertex.size = ifelse(is.element((nodes$id),top5_id_days),10,2), 
+              vertex.shape = ifelse(is.element((nodes$id), top5_id_days), "square","circle"),
+              edge.width = 0.1, 
+              edge.color = "gray78",
+              frame = TRUE)
+  title(main = "Top 5 streamer per giorni di attività",
+        cex.main = 2)
+dev.off()
+```
